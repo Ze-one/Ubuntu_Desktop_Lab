@@ -1,21 +1,26 @@
 name: Ubuntu Remote Desktop
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual trigger from the Actions tab
 
-jobs:  # <--- THIS WAS MISSING
-  secure-rdp: # This is the name of your job
+jobs:
+  secure-rdp:
     runs-on: ubuntu-latest
+    timeout-minutes: 3600 # 6-hour limit
+
     steps:
       - name: Install Desktop Environment and XRDP
         run: |
           sudo apt-get update
+          # Install XFCE Desktop and XRDP Server
           sudo apt-get install -y xfce4 xfce4-goodies xrdp
+          # Configure XRDP to use the XFCE session
           echo "xfce4-session" > ~/.xsession
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
 
       - name: Create Remote User
         run: |
+          # Creates user 'RDP' with sudo privileges
           sudo useradd -m RDP
           echo 'RDP:P@ssword123' | sudo chpasswd
           sudo usermod -aG sudo RDP
@@ -28,13 +33,26 @@ jobs:  # <--- THIS WAS MISSING
         env:
           TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
-          sudo tailscale up --authkey=${{ env.TAILSCALE_AUTH_KEY }} --hostname=ubuntu-node-${{ github.run_id }}
+          # Validation check to see if the Secret is missing
+          if [ -z "$TAILSCALE_AUTH_KEY" ]; then
+            echo "ERROR: TAILSCALE_AUTH_KEY is empty. Check your GitHub Secrets!"
+            exit 1
+          fi
+          # Authenticate and set hostname
+          sudo tailscale up --authkey=${TAILSCALE_AUTH_KEY} --hostname=ubuntu-node-${{ github.run_id }}
 
       - name: Maintain Connection and Display Info
         run: |
+          # Retrieve the internal Tailscale IP
           TS_IP=$(tailscale ip -4)
           echo "===================================="
+          echo "ACCESS GRANTED"
           echo "IP Address: $TS_IP"
           echo "Username: RDP"
+          echo "Password: P@ssword123"
           echo "===================================="
-          while true; do sleep 300; done
+          # Loop to keep the runner from shutting down
+          while true; do
+            echo "[$(date)] Session Active - Standing by for RDP connection..."
+            sleep 300
+          done
