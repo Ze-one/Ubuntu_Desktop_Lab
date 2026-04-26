@@ -1,26 +1,37 @@
-name: Ubuntu Remote Desktop
+name: Ubuntu Remote Desktop - Ultimate Access
 on:
-  workflow_dispatch: # Allows manual trigger from the Actions tab
+  workflow_dispatch:
 
 jobs:
   secure-rdp:
     runs-on: ubuntu-latest
-    timeout-minutes: 3600 # 6-hour limit
+    timeout-minutes: 3600
 
     steps:
-      - name: Install Desktop Environment and XRDP
+      - name: Install Desktop, RDP, VNC, and SSH
         run: |
           sudo apt-get update
-          # Install XFCE Desktop and XRDP Server
-          sudo apt-get install -y xfce4 xfce4-goodies xrdp
-          # Configure XRDP to use the XFCE session
+          # Install XFCE, XRDP, TightVNC, and OpenSSH Server
+          sudo apt-get install -y xfce4 xfce4-goodies xrdp tightvncserver openssh-server
+          
+          # 1. Configure XRDP
           echo "xfce4-session" > ~/.xsession
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
 
+          # 2. Configure VNC (Password: 'password')
+          mkdir -p ~/.vnc
+          echo "password" | vncpasswd -f > ~/.vnc/passwd
+          chmod 600 ~/.vnc/passwd
+          vncserver :1 -geometry 1280x720 -depth 16
+
+          # 3. Configure SSH
+          sudo systemctl enable ssh
+          sudo systemctl start ssh
+
       - name: Create Remote User
         run: |
-          # Creates user 'RDP' with sudo privileges
+          # Creates user 'RDP' for all login methods
           sudo useradd -m RDP
           echo 'RDP:P@ssword123' | sudo chpasswd
           sudo usermod -aG sudo RDP
@@ -33,26 +44,38 @@ jobs:
         env:
           TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
-          # Validation check to see if the Secret is missing
           if [ -z "$TAILSCALE_AUTH_KEY" ]; then
-            echo "ERROR: TAILSCALE_AUTH_KEY is empty. Check your GitHub Secrets!"
+            echo "ERROR: TAILSCALE_AUTH_KEY is empty."
             exit 1
           fi
-          # Authenticate and set hostname
-          sudo tailscale up --authkey=${TAILSCALE_AUTH_KEY} --hostname=ubuntu-node-${{ github.run_id }}
+          sudo tailscale up --authkey=${TAILSCALE_AUTH_KEY} --hostname=ubuntu-lab-${{ github.run_id }}
 
-      - name: Maintain Connection and Display Info
+      - name: Setup Browser Access (tmate)
+        uses: mxschmitt/action-tmate@v3
+        with:
+          detached: true 
+
+      - name: Display All Access Credentials
         run: |
-          # Retrieve the internal Tailscale IP
           TS_IP=$(tailscale ip -4)
-          echo "===================================="
-          echo "ACCESS GRANTED"
-          echo "IP Address: $TS_IP"
-          echo "Username: RDP"
-          echo "Password: P@ssword123"
-          echo "===================================="
-          # Loop to keep the runner from shutting down
+          echo "===================================================="
+          echo "METHOD 1: SSH (Terminal)"
+          echo "Command: ssh RDP@$TS_IP"
+          echo "Pass: P@ssword123"
+          echo "----------------------------------------------------"
+          echo "METHOD 2: Remote Desktop (RDP)"
+          echo "Address: $TS_IP"
+          echo "User: RDP | Pass: P@ssword123"
+          echo "----------------------------------------------------"
+          echo "METHOD 3: VNC Viewer"
+          echo "Address: $TS_IP:5901"
+          echo "Pass: password"
+          echo "----------------------------------------------------"
+          echo "METHOD 4: Browser Terminal (tmate)"
+          echo "Check the 'Setup Browser Access' log for the URL"
+          echo "===================================================="
+          
           while true; do
-            echo "[$(date)] Session Active - Standing by for RDP connection..."
+            echo "[$(date)] All systems active (SSH/RDP/VNC/tmate)."
             sleep 300
           done
