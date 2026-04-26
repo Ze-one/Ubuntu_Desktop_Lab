@@ -1,54 +1,40 @@
 name: Ubuntu Remote Desktop
 on:
-  workflow_dispatch: # Allows you to start the session manually
+  workflow_dispatch:
 
-jobs:
-  secure-rdp:
-    runs-on: ubuntu-latest # Uses the latest Ubuntu runner
-    timeout-minutes: 3600  # Matches the original 6-hour limit
-    
+jobs:  # <--- THIS WAS MISSING
+  secure-rdp: # This is the name of your job
+    runs-on: ubuntu-latest
     steps:
       - name: Install Desktop Environment and XRDP
         run: |
           sudo apt-get update
-          # Installs a lightweight XFCE desktop and the RDP server
-          sudo apt-get install -y xfce4 xfce4-goodies xrdp 
-          # Configures the session to use XFCE by default
+          sudo apt-get install -y xfce4 xfce4-goodies xrdp
           echo "xfce4-session" > ~/.xsession
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
 
       - name: Create Remote User
         run: |
-          # Creates a user named 'RDP' to match your original setup
           sudo useradd -m RDP
-          # Sets a password (change 'P@ssword123' to your preferred secure password)
           echo 'RDP:P@ssword123' | sudo chpasswd
           sudo usermod -aG sudo RDP
 
       - name: Install Tailscale
         run: |
-          # Downloads and installs the Tailscale client for Linux
           curl -fsSL https://tailscale.com/install.sh | sh
 
       - name: Establish Tailscale Connection
         env:
-          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }} # Uses your stored secret
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
-          # Connects to your Tailnet using the key you generated
           sudo tailscale up --authkey=${{ env.TAILSCALE_AUTH_KEY }} --hostname=ubuntu-node-${{ github.run_id }}
 
       - name: Maintain Connection and Display Info
         run: |
-          # Retrieves the assigned Tailscale IP
           TS_IP=$(tailscale ip -4)
           echo "===================================="
-          echo "ACCESS GRANTED"
           echo "IP Address: $TS_IP"
           echo "Username: RDP"
           echo "===================================="
-          # Keeps the runner alive so you can stay connected
-          while true; do
-            echo "[$(date)] Session Active..."
-            sleep 300
-          done
+          while true; do sleep 300; done
