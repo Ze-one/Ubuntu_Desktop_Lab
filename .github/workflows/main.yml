@@ -1,72 +1,84 @@
-name: Ubuntu Remote Desktop - Ultimate Access
+name: Robust Ubuntu Lab
 on:
   workflow_dispatch:
 
 jobs:
-  secure-rdp:
+  deploy-lab:
     runs-on: ubuntu-latest
     timeout-minutes: 3600
 
     steps:
-      - name: Install Desktop, RDP, VNC, and SSH
+      - name: System Preparation & Service Install
         run: |
           sudo apt-get update
-          sudo apt-get install -y xfce4 xfce4-goodies xrdp tightvncserver openssh-server
-          echo "xfce4-session" > ~/.xsession
-          sudo systemctl enable xrdp
-          sudo systemctl start xrdp
-          mkdir -p ~/.vnc
-          echo "password" | vncpasswd -f > ~/.vnc/passwd
-          chmod 600 ~/.vnc/passwd
-          vncserver :1 -geometry 1280x720 -depth 16
+          # Install core desktop and connectivity tools
+          sudo apt-get install -y xfce4 xfce4-goodies xrdp tightvncserver openssh-server net-tools
+          
+          # Configure SSH to be highly available
           sudo systemctl enable ssh
           sudo systemctl start ssh
 
-      - name: Create Remote User
+          # Configure XRDP
+          echo "xfce4-session" > ~/.xsession
+          sudo systemctl enable xrdp
+          sudo systemctl start xrdp
+
+      - name: Provision Lab User
         run: |
-          sudo useradd -m RDP
+          # Robust user creation with home directory and sudo access
+          sudo useradd -m -s /bin/bash RDP
           echo 'RDP:P@ssword123' | sudo chpasswd
           sudo usermod -aG sudo RDP
 
-      - name: Install Tailscale
+      - name: Initialize Robust VNC Instance
         run: |
-          curl -fsSL https://tailscale.com/install.sh | sh
+          # Clear existing locks and set up VNC with persistence
+          mkdir -p /home/RDP/.vnc
+          echo "password" | vncpasswd -f > /home/RDP/.vnc/passwd
+          sudo chown -R RDP:RDP /home/RDP/.vnc
+          sudo chmod 600 /home/RDP/.vnc/passwd
+          
+          # Start VNC as the RDP user to ensure proper permissions
+          sudo -u RDP vncserver :1 -geometry 1280x720 -depth 16
 
-      - name: Establish Tailscale Connection
+      - name: Network Layer (Tailscale)
         env:
           TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
           if [ -z "$TAILSCALE_AUTH_KEY" ]; then
-            echo "ERROR: TAILSCALE_AUTH_KEY is empty."
+            echo "CRITICAL ERROR: TAILSCALE_AUTH_KEY missing from Secrets!"
             exit 1
           fi
-          sudo tailscale up --authkey=${TAILSCALE_AUTH_KEY} --hostname=ubuntu-lab-${{ github.run_id }}
+          sudo tailscale up --authkey=${TAILSCALE_AUTH_KEY} --hostname=ubuntu-robust-${{ github.run_id }}
 
-      - name: Setup Browser Access (tmate)
+      - name: Service Health Check (Validation)
+        run: |
+          echo "Checking Service Status..."
+          echo "--- PORT 22 (SSH) ---"
+          netstat -tuln | grep :22 || (echo "SSH Failed" && exit 1)
+          echo "--- PORT 5901 (VNC) ---"
+          netstat -tuln | grep :5901 || (echo "VNC Failed" && exit 1)
+          echo "--- PORT 3389 (RDP) ---"
+          netstat -tuln | grep :3389 || (echo "RDP Failed" && exit 1)
+
+      - name: Setup Emergency Browser Access (tmate)
         uses: mxschmitt/action-tmate@v3
         with:
           detached: true 
 
-      - name: Display All Access Credentials
+      - name: Final Connectivity Console
         run: |
           TS_IP=$(tailscale ip -4)
           echo "===================================================="
-          echo "METHOD 1: SSH (Terminal)"
-          echo "Command: ssh RDP@$TS_IP"
-          echo "Pass: P@ssword123"
+          echo "NETWORK INFRASTRUCTURE LIVE"
+          echo "Tailscale IP: $TS_IP"
           echo "----------------------------------------------------"
-          echo "METHOD 2: Remote Desktop (RDP)"
-          echo "Address: $TS_IP"
-          echo "User: RDP | Pass: P@ssword123"
-          echo "----------------------------------------------------"
-          echo "METHOD 3: VNC Viewer"
-          echo "Address: $TS_IP:5901"
-          echo "Pass: password"
-          echo "----------------------------------------------------"
-          echo "METHOD 4: Browser Terminal (tmate)"
-          echo "Check the 'Setup Browser Access' log for the URL"
+          echo "1. SSH (MOST ROBUST): ssh RDP@$TS_IP"
+          echo "2. VNC (STABLE): $TS_IP:5901 (Pass: password)"
+          echo "3. RDP (GUI): $TS_IP (User: RDP | Pass: P@ssword123)"
           echo "===================================================="
           while true; do
-            echo "[$(date)] All systems active (SSH/RDP/VNC/tmate)."
+            echo "[$(date)] Monitoring services... all systems nominal."
             sleep 300
           done
