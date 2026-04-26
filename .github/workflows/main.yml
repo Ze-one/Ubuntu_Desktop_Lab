@@ -11,27 +11,19 @@ jobs:
       - name: Install Desktop, RDP, VNC, and SSH
         run: |
           sudo apt-get update
-          # Install XFCE, XRDP, TightVNC, and OpenSSH Server
           sudo apt-get install -y xfce4 xfce4-goodies xrdp tightvncserver openssh-server
-          
-          # 1. Configure XRDP
           echo "xfce4-session" > ~/.xsession
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
-
-          # 2. Configure VNC (Password: 'password')
           mkdir -p ~/.vnc
           echo "password" | vncpasswd -f > ~/.vnc/passwd
           chmod 600 ~/.vnc/passwd
           vncserver :1 -geometry 1280x720 -depth 16
-
-          # 3. Configure SSH
           sudo systemctl enable ssh
           sudo systemctl start ssh
 
       - name: Create Remote User
         run: |
-          # Creates user 'RDP' for all login methods
           sudo useradd -m RDP
           echo 'RDP:P@ssword123' | sudo chpasswd
           sudo usermod -aG sudo RDP
@@ -74,7 +66,6 @@ jobs:
           echo "METHOD 4: Browser Terminal (tmate)"
           echo "Check the 'Setup Browser Access' log for the URL"
           echo "===================================================="
-          
           while true; do
             echo "[$(date)] All systems active (SSH/RDP/VNC/tmate)."
             sleep 300
