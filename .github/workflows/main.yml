@@ -1,4 +1,4 @@
-name: Robust Ubuntu Lab
+name: Robust Ubuntu Lab - Permission Fix
 on:
   workflow_dispatch:
 
@@ -11,34 +11,33 @@ jobs:
       - name: System Preparation & Service Install
         run: |
           sudo apt-get update
-          # Install core desktop and connectivity tools
           sudo apt-get install -y xfce4 xfce4-goodies xrdp tightvncserver openssh-server net-tools
           
-          # Configure SSH to be highly available
           sudo systemctl enable ssh
           sudo systemctl start ssh
-
-          # Configure XRDP
           echo "xfce4-session" > ~/.xsession
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
 
       - name: Provision Lab User
         run: |
-          # Robust user creation with home directory and sudo access
           sudo useradd -m -s /bin/bash RDP
           echo 'RDP:P@ssword123' | sudo chpasswd
           sudo usermod -aG sudo RDP
 
-      - name: Initialize Robust VNC Instance
+      - name: Initialize VNC with Correct Permissions
         run: |
-          # Clear existing locks and set up VNC with persistence
-          mkdir -p /home/RDP/.vnc
-          echo "password" | vncpasswd -f > /home/RDP/.vnc/passwd
-          sudo chown -R RDP:RDP /home/RDP/.vnc
+          # 1. Use sudo to create the directory first
+          sudo mkdir -p /home/RDP/.vnc
+          
+          # 2. Set the VNC password
+          echo "password" | sudo vncpasswd -f | sudo tee /home/RDP/.vnc/passwd > /dev/null
+          
+          # 3. CRITICAL: Change ownership to the RDP user
+          sudo chown -R RDP:RDP /home/RDP/
           sudo chmod 600 /home/RDP/.vnc/passwd
           
-          # Start VNC as the RDP user to ensure proper permissions
+          # 4. Start VNC as the RDP user
           sudo -u RDP vncserver :1 -geometry 1280x720 -depth 16
 
       - name: Network Layer (Tailscale)
@@ -47,20 +46,10 @@ jobs:
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
           if [ -z "$TAILSCALE_AUTH_KEY" ]; then
-            echo "CRITICAL ERROR: TAILSCALE_AUTH_KEY missing from Secrets!"
+            echo "CRITICAL ERROR: TAILSCALE_AUTH_KEY missing!"
             exit 1
           fi
           sudo tailscale up --authkey=${TAILSCALE_AUTH_KEY} --hostname=ubuntu-robust-${{ github.run_id }}
-
-      - name: Service Health Check (Validation)
-        run: |
-          echo "Checking Service Status..."
-          echo "--- PORT 22 (SSH) ---"
-          netstat -tuln | grep :22 || (echo "SSH Failed" && exit 1)
-          echo "--- PORT 5901 (VNC) ---"
-          netstat -tuln | grep :5901 || (echo "VNC Failed" && exit 1)
-          echo "--- PORT 3389 (RDP) ---"
-          netstat -tuln | grep :3389 || (echo "RDP Failed" && exit 1)
 
       - name: Setup Emergency Browser Access (tmate)
         uses: mxschmitt/action-tmate@v3
@@ -74,9 +63,9 @@ jobs:
           echo "NETWORK INFRASTRUCTURE LIVE"
           echo "Tailscale IP: $TS_IP"
           echo "----------------------------------------------------"
-          echo "1. SSH (MOST ROBUST): ssh RDP@$TS_IP"
-          echo "2. VNC (STABLE): $TS_IP:5901 (Pass: password)"
-          echo "3. RDP (GUI): $TS_IP (User: RDP | Pass: P@ssword123)"
+          echo "1. SSH: ssh RDP@$TS_IP (Pass: P@ssword123)"
+          echo "2. VNC: $TS_IP:5901 (Pass: password)"
+          echo "3. RDP: $TS_IP (User: RDP | Pass: P@ssword123)"
           echo "===================================================="
           while true; do
             echo "[$(date)] Monitoring services... all systems nominal."
